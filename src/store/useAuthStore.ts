@@ -8,7 +8,7 @@ interface User {
   email: string;
   phoneNumber: string;
   gender: string;
-  isAdmin: boolean;
+profilePicture?: string;  isAdmin: boolean;
   createdAt: Date;
 }
 

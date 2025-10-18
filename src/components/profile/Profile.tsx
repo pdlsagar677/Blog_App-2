@@ -5,12 +5,14 @@ import React, { useEffect, useState } from "react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useBlogStore } from "@/store/useBlogStore";
 import { useRouter } from "next/navigation";
-import { Calendar, Heart, MessageCircle, Eye, Edit, Trash2 } from "lucide-react";
+import { Calendar, Heart, MessageCircle, Eye, Edit, Trash2, Upload, Camera } from "lucide-react";
+import { uploadToCloudinary } from "@/lib/cloudinary";
 
 interface ProfileFormData {
   username: string;
   email: string;
   phoneNumber: string;
+  profilePicture?: string;
 }
 
 const Profile: React.FC = () => {
@@ -25,7 +27,8 @@ const Profile: React.FC = () => {
   const [formData, setFormData] = useState<ProfileFormData>({
     username: '',
     email: '',
-    phoneNumber: ''
+    phoneNumber: '',
+    profilePicture: ''
   });
   const [userPosts, setUserPosts] = useState<any[]>([]);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
@@ -33,6 +36,11 @@ const Profile: React.FC = () => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  
+  // Profile picture states
+  const [profileImageFile, setProfileImageFile] = useState<File | null>(null);
+  const [profileImagePreview, setProfileImagePreview] = useState<string>("");
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   // Check authentication on component mount
   useEffect(() => {
@@ -72,7 +80,8 @@ const Profile: React.FC = () => {
       setFormData({
         username: user.username,
         email: user.email,
-        phoneNumber: user.phoneNumber
+        phoneNumber: user.phoneNumber,
+        profilePicture: user.profilePicture || ''
       });
       
       // Filter user's posts from the global posts array
@@ -80,6 +89,55 @@ const Profile: React.FC = () => {
       setUserPosts(userPosts);
     }
   }, [user, posts]);
+
+  // Clean up image preview URL when component unmounts
+  useEffect(() => {
+    return () => {
+      if (profileImagePreview) {
+        URL.revokeObjectURL(profileImagePreview);
+      }
+    };
+  }, [profileImagePreview]);
+
+  // Handle profile image upload
+  const handleProfileImageUpload = async (file: File) => {
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      setMessage({ type: 'error', text: 'Please select a valid image file (JPEG, PNG, GIF, WebP)' });
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    const maxSize = 5 * 1024 * 1024; // 5MB in bytes
+    if (file.size > maxSize) {
+      setMessage({ type: 'error', text: 'Image size must be less than 5MB' });
+      return;
+    }
+
+    setProfileImageFile(file);
+    
+    // Create preview URL
+    const previewUrl = URL.createObjectURL(file);
+    setProfileImagePreview(previewUrl);
+  };
+
+  const handleProfileImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      handleProfileImageUpload(files[0]);
+    }
+  };
+
+  const removeProfileImage = () => {
+    setProfileImageFile(null);
+    if (profileImagePreview) {
+      URL.revokeObjectURL(profileImagePreview);
+      setProfileImagePreview("");
+    }
+    // Also clear the profile picture from form data
+    setFormData(prev => ({ ...prev, profilePicture: '' }));
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -98,9 +156,12 @@ const Profile: React.FC = () => {
     }
 
     // Check if any changes were made
-    if (formData.username === user.username && 
-        formData.email === user.email && 
-        formData.phoneNumber === user.phoneNumber) {
+    const hasChanges = formData.username !== user.username || 
+                      formData.email !== user.email || 
+                      formData.phoneNumber !== user.phoneNumber ||
+                      profileImageFile !== null;
+
+    if (!hasChanges) {
       setMessage({ type: 'error', text: 'No changes detected' });
       return;
     }
@@ -120,9 +181,34 @@ const Profile: React.FC = () => {
     clearError();
 
     try {
-      await updateProfile(formData);
+      let finalProfilePicture = formData.profilePicture;
+
+      // If new profile image is selected, upload it to Cloudinary
+      if (profileImageFile) {
+        setIsUploadingImage(true);
+        setMessage({ type: 'success', text: '📤 Uploading profile picture...' });
+        
+        finalProfilePicture = await uploadToCloudinary(profileImageFile);
+        
+        setIsUploadingImage(false);
+        setMessage({ type: 'success', text: '✅ Picture uploaded! Updating profile...' });
+      }
+
+      // Update profile with new data including profile picture
+      await updateProfile({
+        ...formData,
+        profilePicture: finalProfilePicture
+      });
+
       setMessage({ type: 'success', text: 'Profile updated successfully!' });
       setIsEditing(false);
+      
+      // Clear the image file after successful upload
+      setProfileImageFile(null);
+      if (profileImagePreview) {
+        URL.revokeObjectURL(profileImagePreview);
+        setProfileImagePreview("");
+      }
       
       // Refresh the auth state after successful update
       setTimeout(() => {
@@ -137,6 +223,7 @@ const Profile: React.FC = () => {
       });
     } finally {
       setIsUpdating(false);
+      setIsUploadingImage(false);
     }
   };
 
@@ -145,12 +232,20 @@ const Profile: React.FC = () => {
       setFormData({
         username: user.username,
         email: user.email,
-        phoneNumber: user.phoneNumber
+        phoneNumber: user.phoneNumber,
+        profilePicture: user.profilePicture || ''
       });
     }
     setIsEditing(false);
     setMessage(null);
     clearError();
+    
+    // Reset image states
+    setProfileImageFile(null);
+    if (profileImagePreview) {
+      URL.revokeObjectURL(profileImagePreview);
+      setProfileImagePreview("");
+    }
   };
 
   const handleLogout = async () => {
@@ -183,45 +278,41 @@ const Profile: React.FC = () => {
     router.push(`/edit-post/${postId}`);
   };
 
- // In your Profile.tsx - update the handleDeleteAccount function
-const handleDeleteAccount = async () => {
-  if (!deletePassword.trim()) {
-    setDeleteError('Password is required to confirm account deletion');
-    return;
-  }
-
-  setIsDeletingAccount(true);
-  setDeleteError(null);
-
-  try {
-    // Only call deleteAccount - the backend handles post deletion
-    await deleteAccount(deletePassword);
-    
-    setMessage({ type: 'success', text: 'Account and all your posts have been deleted successfully' });
-    setShowDeleteDialog(false);
-    
-    // Redirect to home page after successful deletion
-    setTimeout(() => {
-      router.push('/');
-    }, 2000);
-    
-  } catch (error: any) {
-    console.error('Account deletion error:', error);
-    
-    // Handle specific error messages with user-friendly text
-    if (error.message.includes('Invalid password') || error.message.includes('incorrect')) {
-      setDeleteError('The password you entered is incorrect. Please try again.');
-    } else if (error.message.includes('Unauthorized') || error.message.includes('authentication token')) {
-      setDeleteError('Your session has expired. Please log in again.');
-    } else if (error.message.includes('Admin accounts cannot be deleted')) {
-      setDeleteError('Admin accounts cannot be deleted through this interface.');
-    } else {
-      setDeleteError('Failed to delete account. Please try again.');
+  const handleDeleteAccount = async () => {
+    if (!deletePassword.trim()) {
+      setDeleteError('Password is required to confirm account deletion');
+      return;
     }
-  } finally {
-    setIsDeletingAccount(false);
-  }
-};
+
+    setIsDeletingAccount(true);
+    setDeleteError(null);
+
+    try {
+      await deleteAccount(deletePassword);
+      
+      setMessage({ type: 'success', text: 'Account and all your posts have been deleted successfully' });
+      setShowDeleteDialog(false);
+      
+      setTimeout(() => {
+        router.push('/');
+      }, 2000);
+      
+    } catch (error: any) {
+      console.error('Account deletion error:', error);
+      
+      if (error.message.includes('Invalid password') || error.message.includes('incorrect')) {
+        setDeleteError('The password you entered is incorrect. Please try again.');
+      } else if (error.message.includes('Unauthorized') || error.message.includes('authentication token')) {
+        setDeleteError('Your session has expired. Please log in again.');
+      } else if (error.message.includes('Admin accounts cannot be deleted')) {
+        setDeleteError('Admin accounts cannot be deleted through this interface.');
+      } else {
+        setDeleteError('Failed to delete account. Please try again.');
+      }
+    } finally {
+      setIsDeletingAccount(false);
+    }
+  };
 
   const handleCloseDeleteDialog = () => {
     setShowDeleteDialog(false);
@@ -316,27 +407,98 @@ const handleDeleteAccount = async () => {
         <div className="bg-white rounded-2xl shadow-xl p-8 mb-8">
           {/* User Avatar and Basic Info */}
           <div className="flex flex-col md:flex-row items-center md:items-start space-y-6 md:space-y-0 md:space-x-8 mb-8 pb-8 border-b border-gray-200">
-            <div className="w-32 h-32 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-4xl font-bold shadow-lg">
-              {user.username.charAt(0).toUpperCase()}
+            {/* Profile Picture Section */}
+            <div className="relative group">
+              {/* Profile Image */}
+              <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-white shadow-lg">
+                {profileImagePreview ? (
+                  <img
+                    src={profileImagePreview}
+                    alt="Profile preview"
+                    className="w-full h-full object-cover"
+                  />
+                ) : user?.profilePicture ? (
+                  <img
+                    src={user.profilePicture}
+                    alt={user.username}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      // If image fails to load, show fallback
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white text-4xl font-bold">
+                    {user?.username?.charAt(0).toUpperCase()}
+                  </div>
+                )}
+              </div>
+
+              {/* Upload Button (only show when editing) */}
+              {isEditing && (
+                <>
+                  <label 
+                    htmlFor="profile-picture-upload"
+                    className="absolute bottom-2 right-2 bg-blue-600 text-white p-2 rounded-full cursor-pointer hover:bg-blue-700 transition-colors shadow-lg"
+                    title="Change profile picture"
+                  >
+                    <Camera className="w-4 h-4" />
+                    <input
+                      id="profile-picture-upload"
+                      type="file"
+                      accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                      onChange={handleProfileImageSelect}
+                      className="hidden"
+                    />
+                  </label>
+                  
+                  {/* Remove Image Button (only show when there's an image) */}
+                  {(profileImagePreview || user?.profilePicture) && (
+                    <button
+                      onClick={removeProfileImage}
+                      className="absolute top-2 right-2 bg-red-600 text-white p-2 rounded-full hover:bg-red-700 transition-colors shadow-lg"
+                      title="Remove profile picture"
+                      type="button"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  )}
+                </>
+              )}
+
+              {/* Upload Progress */}
+              {isUploadingImage && (
+                <div className="absolute inset-0 bg-black bg-opacity-50 rounded-full flex items-center justify-center">
+                  <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                </div>
+              )}
             </div>
+
             <div className="flex-1 text-center md:text-left">
               <h2 className="text-3xl font-bold text-gray-900 mb-3">
-                {user.username}
+                {user?.username}
               </h2>
               <div className="flex flex-wrap gap-2 justify-center md:justify-start">
                 <span
                   className={`px-4 py-2 rounded-full text-base font-medium ${
-                    user.isAdmin
+                    user?.isAdmin
                       ? "bg-purple-100 text-purple-800 border border-purple-200"
                       : "bg-green-100 text-green-800 border border-green-200"
                   }`}
                 >
-                  {user.isAdmin ? "Administrator" : "User"}
+                  {user?.isAdmin ? "Administrator" : "User"}
                 </span>
                 <span className="px-4 py-2 bg-blue-100 text-blue-800 rounded-full text-base font-medium border border-blue-200">
-                  {user.gender.charAt(0).toUpperCase() + user.gender.slice(1)}
+                  {user?.gender?.charAt(0).toUpperCase() + user?.gender?.slice(1)}
                 </span>
               </div>
+              
+              {/* Profile Picture Help Text */}
+              {isEditing && (
+                <p className="text-sm text-gray-500 mt-3">
+                  Click the camera icon to upload a profile picture
+                </p>
+              )}
             </div>
             
             {/* Edit Button */}
@@ -386,7 +548,7 @@ const handleDeleteAccount = async () => {
                     />
                   ) : (
                     <div className="w-full px-4 py-3 text-lg border-2 border-gray-200 rounded-xl bg-gray-50 text-gray-800 font-medium">
-                      {user.username}
+                      {user?.username}
                     </div>
                   )}
                 </div>
@@ -408,7 +570,7 @@ const handleDeleteAccount = async () => {
                     />
                   ) : (
                     <div className="w-full px-4 py-3 text-lg border-2 border-gray-200 rounded-xl bg-gray-50 text-gray-800 font-medium">
-                      {user.email}
+                      {user?.email}
                     </div>
                   )}
                 </div>
@@ -432,7 +594,7 @@ const handleDeleteAccount = async () => {
                     />
                   ) : (
                     <div className="w-full px-4 py-3 text-lg border-2 border-gray-200 rounded-xl bg-gray-50 text-gray-800 font-medium">
-                      {user.phoneNumber}
+                      {user?.phoneNumber}
                     </div>
                   )}
                 </div>
@@ -444,13 +606,28 @@ const handleDeleteAccount = async () => {
                   Account Information
                 </h3>
 
+                {/* Profile Picture URL (Read-only) */}
+                {user?.profilePicture && !isEditing && (
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-600">
+                      Profile Picture
+                    </label>
+                    <div className="w-full px-4 py-3 text-sm border-2 border-gray-200 rounded-xl bg-gray-50 text-gray-800 font-mono break-all">
+                      {user.profilePicture}
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      Your profile picture is stored securely in Cloudinary
+                    </p>
+                  </div>
+                )}
+
                 {/* Gender Display (Non-editable) */}
                 <div className="space-y-2">
                   <label className="block text-sm font-medium text-gray-600">
                     Gender
                   </label>
                   <div className="w-full px-4 py-3 text-lg border-2 border-gray-200 rounded-xl bg-gray-50 text-gray-700 font-medium">
-                    {user.gender.charAt(0).toUpperCase() + user.gender.slice(1)}
+                    {user?.gender?.charAt(0).toUpperCase() + user?.gender?.slice(1)}
                   </div>
                   <p className="text-xs text-gray-500">Gender cannot be changed</p>
                 </div>
@@ -461,7 +638,7 @@ const handleDeleteAccount = async () => {
                     User ID
                   </label>
                   <div className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl bg-gray-50 text-gray-800 font-mono font-medium">
-                    {user.id}
+                    {user?.id}
                   </div>
                   <p className="text-xs text-gray-500">
                     Your unique identifier in the system
@@ -474,7 +651,7 @@ const handleDeleteAccount = async () => {
                     Member Since
                   </label>
                   <div className="w-full px-4 py-3 text-lg border-2 border-gray-200 rounded-xl bg-gray-50 text-gray-800 font-medium">
-                    {new Date(user.createdAt).toLocaleDateString("en-US", {
+                    {new Date(user?.createdAt).toLocaleDateString("en-US", {
                       year: "numeric",
                       month: "long",
                       day: "numeric",
@@ -484,7 +661,7 @@ const handleDeleteAccount = async () => {
                     Joined{" "}
                     {Math.floor(
                       (new Date().getTime() -
-                        new Date(user.createdAt).getTime()) /
+                        new Date(user?.createdAt).getTime()) /
                         (1000 * 60 * 60 * 24)
                     )}{" "}
                     days ago
@@ -498,16 +675,16 @@ const handleDeleteAccount = async () => {
               <div className="flex flex-col sm:flex-row gap-4 pt-8 mt-8 border-t border-gray-200">
                 <button
                   type="submit"
-                  disabled={isUpdating}
+                  disabled={isUpdating || isUploadingImage}
                   className="flex-1 bg-green-600 text-white py-4 px-8 rounded-xl hover:bg-green-700 transition-colors font-semibold text-lg shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isUpdating ? (
+                  {(isUpdating || isUploadingImage) ? (
                     <span className="flex items-center justify-center">
                       <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      Updating...
+                      {isUploadingImage ? 'Uploading...' : 'Updating...'}
                     </span>
                   ) : (
                     'Save Changes'
@@ -516,7 +693,7 @@ const handleDeleteAccount = async () => {
                 <button
                   type="button"
                   onClick={handleCancel}
-                  disabled={isUpdating}
+                  disabled={isUpdating || isUploadingImage}
                   className="flex-1 border-2 border-gray-300 text-gray-700 py-4 px-8 rounded-xl hover:bg-gray-50 transition-colors font-semibold text-lg disabled:opacity-50"
                 >
                   Cancel
@@ -684,7 +861,7 @@ const handleDeleteAccount = async () => {
                     <div className="flex items-start gap-3">
                       <div className="flex-shrink-0">
                         <svg className="w-5 h-5 text-red-400 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                         </svg>
                       </div>
                       <div className="flex-1">
