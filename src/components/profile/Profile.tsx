@@ -12,7 +12,9 @@ interface ProfileFormData {
   username: string;
   email: string;
   phoneNumber: string;
-  profilePicture?: string;
+    bio?: string;
+    profilePicture?: string;
+
 }
 
 const Profile: React.FC = () => {

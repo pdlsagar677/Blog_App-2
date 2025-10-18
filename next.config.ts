@@ -1,8 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  experimental: {
-    serverComponentsExternalPackages: ['bcrypt','cloudinary'],
-  },};
+  serverExternalPackages: ['bcrypt', 'cloudinary'],
+};
 
 export default nextConfig;
