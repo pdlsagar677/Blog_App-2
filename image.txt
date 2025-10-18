@@ -1,0 +1,44 @@
+my-blog-app/
+├─ src/
+│  ├─ app/
+│  │  ├─ layout.tsx                 # global layout (html/head)
+│  │  ├─ page.tsx                   # homepage (shows signup/login CTA)
+│  │  ├─ (auth)/                     # route group (doesn't affect URL)
+│  │  │  ├─ layout.tsx               # layout for auth pages (centered card)
+│  │  │  ├─ login/
+│  │  │  │  └─ page.tsx              # /login page (client component)
+│  │  │  └─ signup/
+│  │  │     └─ page.tsx              # /signup page (client component)
+│  │  ├─ admin/
+│  │  │  ├─ layout.tsx
+│  │  │  └─ dashboard/
+│  │  │     └─ page.tsx              # admin dashboard (protected)
+│  │  └─ blog/
+│  │     └─ [slug]/page.tsx          # public blog post page
+│  ├─ components/
+│  │  ├─ auth/
+│  │  │  ├─ LoginForm.tsx
+│  │  │  └─ SignupForm.tsx
+│  │  └─ ui/
+│  │     ├─ Button.tsx
+│  │     └─ Input.tsx
+│  ├─ lib/
+│  │  ├─ auth/
+│  │  │  ├─ client.ts                # client-side helpers (login, signup calls)
+│  │  │  └─ server.ts                # server helpers (only if using in-memory store)
+│  │  └─ db/
+│  │     └─ inMemoryStore.ts         # Map/Singleton for users/posts (Option B)
+│  ├─ hooks/
+│  │  └─ useAuth.ts                  # client auth context & hooks
+│  ├─ types/
+│  │  └─ index.ts                    # TS interfaces (User, Post, Session)
+│  └─ app/api/                        # if using App Router route handlers
+│     └─ auth/
+│        ├─ login/
+│        │  └─ route.ts              # POST login handler (server)
+│        └─ signup/
+│           └─ route.ts              # POST signup handler (server)
+├─ middleware.ts                     # route protection (e.g. redirect to /login)
+├─ package.json
+├─ tsconfig.json
+└─ next.config.js

@@ -1,0 +1,37 @@
+{
+  "users": {
+    "admin-1": {
+      "id": "admin-1",
+      "username": "admin",
+      "email": "admin@gmail.com",
+      "phoneNumber": "1234567890",
+      "gender": "male",
+      "passwordHash": "$2b$12$3sDvJVfRAsQCFFAKipKDpuUFvBdeyvGcwBimiKXm6CX2hH.Dr8naG",
+      "isAdmin": true,
+      "createdAt": "2025-10-12T10:36:37.525Z"
+    }
+  },
+  "sessions": {
+    "chq4utoizinmgnl2xzt": {
+      "token": "chq4utoizinmgnl2xzt",
+      "userId": "admin-1",
+      "createdAt": 1760266258841
+    },
+    "y7y8ufr0pdmgop7sln": {
+      "token": "y7y8ufr0pdmgop7sln",
+      "userId": "admin-1",
+      "createdAt": 1760333669771
+    },
+    "aeo8qzqicomgopi4v7": {
+      "token": "aeo8qzqicomgopi4v7",
+      "userId": "admin-1",
+      "createdAt": 1760334152227
+    },
+    "w9tbldm763fmgoqvohy": {
+      "token": "w9tbldm763fmgoqvohy",
+      "userId": "admin-1",
+      "createdAt": 1760336463814
+    }
+  },
+  "lastSaved": "2025-10-18T05:24:08.087Z"
+}
