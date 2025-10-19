@@ -1,12 +1,13 @@
-// components/profile/Profile.tsx - UPDATED
+// components/profile/Profile.tsx - FIXED VERSION
 "use client";
 
 import React, { useEffect, useState } from "react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useBlogStore } from "@/store/useBlogStore";
 import { useRouter } from "next/navigation";
-import { Calendar, Heart, MessageCircle, Eye, Edit, Trash2, Upload, Camera } from "lucide-react";
+import { Calendar, Heart, MessageCircle, Eye, Edit, Trash2, Upload, Camera, FileText, User, AlertTriangle, Shield, HelpCircle } from "lucide-react";
 import { uploadToCloudinary } from "@/lib/cloudinary";
+import Link from "next/link";
 
 interface ProfileFormData {
   username: string;
@@ -42,6 +43,9 @@ const Profile: React.FC = () => {
   const [profileImageFile, setProfileImageFile] = useState<File | null>(null);
   const [profileImagePreview, setProfileImagePreview] = useState<string>("");
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+
+  // Check if user is admin
+  const isAdmin = user?.isAdmin || false;
 
   // Check authentication on component mount
   useEffect(() => {
@@ -298,6 +302,10 @@ const Profile: React.FC = () => {
     try {
       await deletePost(postId);
       setMessage({ type: 'success', text: 'Post deleted successfully!' });
+      
+      // Refresh user posts after deletion
+      const updatedUserPosts = userPosts.filter(post => post.id !== postId);
+      setUserPosts(updatedUserPosts);
     } catch (error) {
       console.error('Error deleting post:', error);
       setMessage({ type: 'error', text: 'Failed to delete post. Please try again.' });
@@ -364,9 +372,6 @@ const Profile: React.FC = () => {
   const safeArrayLength = (array: any) => {
     return Array.isArray(array) ? array.length : 0;
   };
-
-  // Check if user is admin
-  const isAdmin = user?.isAdmin || false;
 
   // Show loading during initial auth check
   if (!hasCheckedAuth || isLoading) {
@@ -518,12 +523,12 @@ const Profile: React.FC = () => {
               <div className="flex flex-wrap gap-2 justify-center md:justify-start">
                 <span
                   className={`px-4 py-2 rounded-full text-base font-medium ${
-                    user?.isAdmin
+                    isAdmin
                       ? "bg-purple-100 text-purple-800 border border-purple-200"
                       : "bg-green-100 text-green-800 border border-green-200"
                   }`}
                 >
-                  {user?.isAdmin ? "Administrator" : "User"}
+                  {isAdmin ? "Administrator" : "User"}
                 </span>
                 <span className="px-4 py-2 bg-blue-100 text-blue-800 rounded-full text-base font-medium border border-blue-200">
                   {user?.gender?.charAt(0).toUpperCase() + user?.gender?.slice(1)}
@@ -741,7 +746,236 @@ const Profile: React.FC = () => {
           </form>
         </div>
 
-        {/* ... rest of your component remains the same ... */}
+        {/* User's Blog Posts Section */}
+        <div className="bg-white rounded-2xl shadow-xl p-8 mb-8">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold text-gray-900">
+              My Blog Posts ({userPosts.length})
+            </h2>
+            <Link
+              href="/create-post"
+              className="bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2"
+            >
+              <FileText className="w-4 h-4" />
+              Write New Post
+            </Link>
+          </div>
+
+          {userPosts.length === 0 ? (
+            <div className="text-center py-12">
+              <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-gray-600 mb-2">
+                No Blog Posts Yet
+              </h3>
+              <p className="text-gray-500 mb-6">
+                Start sharing your thoughts and experiences with the community.
+              </p>
+              <Link
+                href="/create-post"
+                className="bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors font-medium inline-flex items-center gap-2"
+              >
+                <FileText className="w-4 h-4" />
+                Create Your First Post
+              </Link>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {userPosts.map((post) => (
+                <div
+                  key={post.id}
+                  className="border border-gray-200 rounded-xl overflow-hidden hover:shadow-lg transition-shadow"
+                >
+                  {post.imageUrl && (
+                    <div className="h-48 overflow-hidden">
+                      <img
+                        src={post.imageUrl}
+                        alt={post.title}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  )}
+                  <div className="p-4">
+                    <h3 className="font-semibold text-lg text-gray-900 mb-2 line-clamp-2">
+                      {post.title}
+                    </h3>
+                    <p className="text-gray-600 text-sm mb-3 line-clamp-2">
+                      {post.description}
+                    </p>
+                    <div className="flex items-center justify-between text-sm text-gray-500 mb-3">
+                      <div className="flex items-center gap-1">
+                        <Calendar className="w-4 h-4" />
+                        <span>{formatDate(post.createdAt)}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-1">
+                          <Heart className="w-4 h-4" />
+                          <span>{safeArrayLength(post.likes)}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <MessageCircle className="w-4 h-4" />
+                          <span>{safeArrayLength(post.comments)}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Link
+                        href={`/blog/${post.id}`}
+                        className="flex-1 bg-blue-600 text-white py-2 px-3 rounded text-center text-sm hover:bg-blue-700 transition-colors"
+                      >
+                        View
+                      </Link>
+                      <button
+                        onClick={() => handleEditPost(post.id)}
+                        className="bg-green-600 text-white py-2 px-3 rounded text-sm hover:bg-green-700 transition-colors flex items-center gap-1"
+                      >
+                        <Edit className="w-3 h-3" />
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeletePost(post.id)}
+                        disabled={isDeleting === post.id}
+                        className="bg-red-600 text-white py-2 px-3 rounded text-sm hover:bg-red-700 transition-colors flex items-center gap-1 disabled:opacity-50"
+                      >
+                        {isDeleting === post.id ? (
+                          <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <Trash2 className="w-3 h-3" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Account Deletion Section - Only show for non-admin users */}
+        {!isAdmin ? (
+          <div className="bg-white rounded-2xl shadow-xl p-8">
+            <div className="border-b border-gray-200 pb-4 mb-6">
+              <h2 className="text-2xl font-bold text-red-600 flex items-center gap-2">
+                <AlertTriangle className="w-6 h-6" />
+                Danger Zone
+              </h2>
+              <p className="text-gray-600 mt-2">
+                Once you delete your account, there is no going back. Please be certain.
+              </p>
+            </div>
+
+            <div className="bg-red-50 border border-red-200 rounded-xl p-6">
+              <h3 className="text-lg font-semibold text-red-800 mb-2">
+                Delete Account
+              </h3>
+              <p className="text-red-700 mb-4">
+                This action will permanently delete your account and remove all your data from our servers. 
+                All your blog posts and comments will be deleted. This action cannot be undone.
+              </p>
+              
+              <div className="flex flex-col sm:flex-row gap-4">
+                <button
+                  onClick={() => setShowDeleteDialog(true)}
+                  className="bg-red-600 text-white py-3 px-6 rounded-lg hover:bg-red-700 transition-colors font-medium"
+                >
+                  Delete My Account
+                </button>
+                <p className="text-red-600 text-sm flex items-center">
+                  <AlertTriangle className="w-4 h-4 mr-1" />
+                  Proceed with extreme caution
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* Admin Support Section - Show for admin users */
+          <div className="bg-blue-50 rounded-2xl shadow-xl p-8 border border-blue-200">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-3 mb-3">
+                  <Shield className="w-8 h-8 text-blue-600" />
+                  <h3 className="text-xl font-bold text-blue-800">
+                    Administrator Account
+                  </h3>
+                </div>
+                <p className="text-blue-700 mb-4">
+                  As an administrator, account deletion is disabled to maintain system integrity. 
+                  Please contact system support if you need to make changes to your administrator account.
+                </p>
+                <div className="flex items-center gap-2 text-blue-600 text-sm">
+                  <HelpCircle className="w-4 h-4" />
+                  <span>Contact support for administrator account assistance</span>
+                </div>
+              </div>
+              
+              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
+                <Shield className="w-8 h-8 text-blue-600" />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete Account Confirmation Dialog - Only for non-admin users */}
+        {!isAdmin && showDeleteDialog && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="bg-red-100 p-2 rounded-full">
+                  <AlertTriangle className="w-6 h-6 text-red-600" />
+                </div>
+                <h3 className="text-xl font-bold text-red-600">
+                  Delete Account
+                </h3>
+              </div>
+              
+              <p className="text-gray-700 mb-4">
+                This action cannot be undone. All your data, including {userPosts.length} blog posts, will be permanently deleted.
+              </p>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Enter your password to confirm:
+                  </label>
+                  <input
+                    type="password"
+                    value={deletePassword}
+                    onChange={(e) => setDeletePassword(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                    placeholder="Your password"
+                  />
+                </div>
+
+                {deleteError && (
+                  <p className="text-red-600 text-sm">{deleteError}</p>
+                )}
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleDeleteAccount}
+                    disabled={isDeletingAccount}
+                    className="flex-1 bg-red-600 text-white py-3 px-4 rounded-lg hover:bg-red-700 transition-colors font-medium disabled:opacity-50"
+                  >
+                    {isDeletingAccount ? (
+                      <span className="flex items-center justify-center">
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                        Deleting...
+                      </span>
+                    ) : (
+                      'Yes, Delete My Account'
+                    )}
+                  </button>
+                  <button
+                    onClick={handleCloseDeleteDialog}
+                    disabled={isDeletingAccount}
+                    className="flex-1 border border-gray-300 text-gray-700 py-3 px-4 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
