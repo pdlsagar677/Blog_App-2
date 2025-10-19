@@ -1,6 +1,6 @@
-// app/blog/[id]/page.tsx
+// app/blog/[id]/page.tsx - UPDATED
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuthStore } from "@/store/useAuthStore";
@@ -17,7 +17,10 @@ import {
   Edit,
   Save,
   X,
+  Image,
+  Upload,
 } from "lucide-react";
+import { uploadToCloudinary } from "@/lib/cloudinary";
 
 export default function BlogPostPage() {
   const [comment, setComment] = useState("");
@@ -31,6 +34,9 @@ export default function BlogPostPage() {
     content: "",
     imageUrl: "",
   });
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>("");
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   const params = useParams();
   const router = useRouter();
@@ -48,6 +54,7 @@ export default function BlogPostPage() {
 
   const postId = params.id as string;
   const post = posts.find(p => p.id === postId);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setIsClient(true);
@@ -86,6 +93,15 @@ export default function BlogPostPage() {
     }
   }, [post]);
 
+  // Clean up image preview URL when component unmounts
+  useEffect(() => {
+    return () => {
+      if (imagePreview) {
+        URL.revokeObjectURL(imagePreview);
+      }
+    };
+  }, [imagePreview]);
+
   // Redirect to login if not authenticated
   useEffect(() => {
     if (authChecked && !isLoggedIn) {
@@ -95,6 +111,54 @@ export default function BlogPostPage() {
       return () => clearTimeout(timer);
     }
   }, [authChecked, isLoggedIn, router]);
+
+  // Handle image upload
+  const handleImageUpload = (file: File) => {
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      alert('Please select a valid image file (JPEG, PNG, GIF, WebP)');
+      return;
+    }
+
+    // Validate file size (max 10MB)
+    const maxSize = 10 * 1024 * 1024; // 10MB in bytes
+    if (file.size > maxSize) {
+      alert('Image size must be less than 10MB');
+      return;
+    }
+
+    setImageFile(file);
+    
+    // Create preview URL
+    const previewUrl = URL.createObjectURL(file);
+    setImagePreview(previewUrl);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      handleImageUpload(files[0]);
+    }
+  };
+
+  const handleFileDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleImageUpload(files[0]);
+    }
+  };
+
+  const removeImage = () => {
+    setImageFile(null);
+    if (imagePreview) {
+      URL.revokeObjectURL(imagePreview);
+      setImagePreview("");
+    }
+    // Also clear the image URL from form data
+    setEditForm(prev => ({ ...prev, imageUrl: "" }));
+  };
 
   // Safe array check and includes function
   const safeIncludes = (array: any, value: any) => {
@@ -121,20 +185,41 @@ export default function BlogPostPage() {
         imageUrl: post.imageUrl || ""
       });
     }
+    // Clear image file and preview
+    setImageFile(null);
+    if (imagePreview) {
+      URL.revokeObjectURL(imagePreview);
+      setImagePreview("");
+    }
   };
 
   const handleSaveEdit = async () => {
     if (!post) return;
     
     try {
+      let finalImageUrl = editForm.imageUrl;
+
+      // If new image file is selected, upload it to Cloudinary
+      if (imageFile) {
+        setIsUploadingImage(true);
+        finalImageUrl = await uploadToCloudinary(imageFile);
+        setIsUploadingImage(false);
+      }
+
       await updatePost(post.id, {
         title: editForm.title,
         description: editForm.description,
         content: editForm.content,
-        imageUrl: editForm.imageUrl
+        imageUrl: finalImageUrl
       });
       
       setIsEditing(false);
+      // Clear image file after successful update
+      setImageFile(null);
+      if (imagePreview) {
+        URL.revokeObjectURL(imagePreview);
+        setImagePreview("");
+      }
     } catch (error) {
       console.error('Error updating post:', error);
     }
@@ -172,6 +257,7 @@ export default function BlogPostPage() {
         text: comment,
         authorId: user.id,
         authorName: user.username,
+        authorAvatar: user.avatar || "", // Add avatar for comments
       });
 
       setComment("");
@@ -206,6 +292,43 @@ export default function BlogPostPage() {
   const isPostLiked = safeIncludes(post?.likes, user?.id);
   const canEditPost = isLoggedIn && (user?.id === post?.authorId || user?.isAdmin);
   const canDeletePost = isLoggedIn && (user?.id === post?.authorId || user?.isAdmin);
+
+  // Avatar component for comments
+  const UserAvatar = ({ avatarUrl, name, size = "small" }: { avatarUrl?: string, name: string, size?: "small" | "medium" | "large" }) => {
+    const sizeClasses = {
+      small: "w-6 h-6 text-xs",
+      medium: "w-8 h-8 text-sm",
+      large: "w-10 h-10 text-base"
+    };
+
+    const initials = name
+      .split(' ')
+      .map(part => part[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+
+    if (avatarUrl) {
+      return (
+        <img
+          src={avatarUrl}
+          alt={name}
+          className={`rounded-full object-cover ${sizeClasses[size]}`}
+          onError={(e) => {
+            e.currentTarget.style.display = "none";
+            const fallback = e.currentTarget.nextSibling as HTMLElement;
+            if (fallback) fallback.style.display = "flex";
+          }}
+        />
+      );
+    }
+
+    return (
+      <div className={`rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-medium ${sizeClasses[size]}`}>
+        {initials}
+      </div>
+    );
+  };
 
   // Show loading while checking authentication
   if (!isClient || isLoading) {
@@ -307,10 +430,15 @@ export default function BlogPostPage() {
                     </button>
                     <button
                       onClick={handleSaveEdit}
-                      className="flex items-center bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg transition-colors"
+                      disabled={isUploadingImage}
+                      className="flex items-center bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
                     >
-                      <Save className="w-5 h-5 mr-2" />
-                      Save Changes
+                      {isUploadingImage ? (
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                      ) : (
+                        <Save className="w-5 h-5 mr-2" />
+                      )}
+                      {isUploadingImage ? 'Uploading...' : 'Save Changes'}
                     </button>
                   </div>
                 ) : (
@@ -344,15 +472,59 @@ export default function BlogPostPage() {
           {isEditing ? (
             <div className="p-6 border-b border-gray-200">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Featured Image URL
+                <Image className="w-4 h-4 inline mr-2" />
+                Featured Image
               </label>
-              <input
-                type="url"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                value={editForm.imageUrl}
-                onChange={(e) => setEditForm(prev => ({ ...prev, imageUrl: e.target.value }))}
-                placeholder="https://example.com/image.jpg"
-              />
+              
+              {/* File Upload Area */}
+              {!imagePreview && !editForm.imageUrl && (
+                <div
+                  className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
+                  onDrop={handleFileDrop}
+                  onDragOver={(e) => e.preventDefault()}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                  <p className="text-gray-600 mb-1">Drag & drop an image here or click to browse</p>
+                  <p className="text-xs text-gray-500">Supports: JPEG, PNG, GIF, WebP (Max 10MB)</p>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
+                </div>
+              )}
+
+              {/* Image Preview */}
+              {(imagePreview || editForm.imageUrl) && (
+                <div className="relative">
+                  <div className="flex items-center space-x-4">
+                    <img
+                      src={imagePreview || editForm.imageUrl}
+                      alt="Preview"
+                      className="w-32 h-32 object-cover rounded-lg border border-gray-300"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
+                    <div className="flex-1">
+                      <p className="text-sm text-gray-600 mb-2">
+                        {imageFile ? `Selected file: ${imageFile.name}` : 'Current image'}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={removeImage}
+                        className="flex items-center text-red-600 hover:text-red-800 text-sm"
+                      >
+                        <X className="w-4 h-4 mr-1" />
+                        Remove Image
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             post.imageUrl && (
@@ -402,15 +574,21 @@ export default function BlogPostPage() {
                 {/* Read-only View */}
                 <h1 className="text-4xl font-bold text-gray-900 mb-4">{post.title}</h1>
                 
-                {/* Meta Information */}
+                {/* Meta Information with Avatar */}
                 <div className="flex items-center gap-6 text-gray-600 mb-6">
-                  <div className="flex items-center gap-2">
-                    <User className="w-5 h-5" />
-                    <span className="font-medium">{post.authorName}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-5 h-5" />
-                    <span>{formatDate(post.createdAt)}</span>
+                  <div className="flex items-center gap-3">
+                    <UserAvatar 
+                      avatarUrl={post.authorAvatar} 
+                      name={post.authorName}
+                      size="medium"
+                    />
+                    <div>
+                      <span className="font-medium block">{post.authorName}</span>
+                      <div className="flex items-center gap-2 text-sm text-gray-500">
+                        <Calendar className="w-4 h-4" />
+                        <span>{formatDate(post.createdAt)}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 
@@ -466,22 +644,31 @@ export default function BlogPostPage() {
           {/* Add Comment */}
           {isLoggedIn ? (
             <div className="mb-8">
-              <textarea
-                placeholder="Share your thoughts..."
-                rows={4}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors text-gray-900 placeholder-gray-400 bg-white text-lg"
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-              />
-              <div className="flex justify-end mt-3">
-                <button
-                  onClick={handleAddComment}
-                  disabled={!comment.trim()}
-                  className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
-                >
-                  <Send className="w-4 h-4" />
-                  Post Comment
-                </button>
+              <div className="flex items-start gap-4">
+                <UserAvatar 
+                  avatarUrl={user?.avatar} 
+                  name={user?.username || "User"}
+                  size="medium"
+                />
+                <div className="flex-1">
+                  <textarea
+                    placeholder="Share your thoughts..."
+                    rows={4}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors text-gray-900 placeholder-gray-400 bg-white text-lg"
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                  />
+                  <div className="flex justify-end mt-3">
+                    <button
+                      onClick={handleAddComment}
+                      disabled={!comment.trim()}
+                      className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
+                    >
+                      <Send className="w-4 h-4" />
+                      Post Comment
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           ) : (
@@ -511,13 +698,20 @@ export default function BlogPostPage() {
                   className="border-b border-gray-200 pb-6 last:border-b-0"
                 >
                   <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <span className="font-semibold text-gray-900">
-                        {comment.authorName}
-                      </span>
-                      <span className="text-gray-500 text-sm ml-3">
-                        {formatDate(comment.createdAt)}
-                      </span>
+                    <div className="flex items-center gap-3">
+                      <UserAvatar 
+                        avatarUrl={comment.authorAvatar} 
+                        name={comment.authorName}
+                        size="small"
+                      />
+                      <div>
+                        <span className="font-semibold text-gray-900">
+                          {comment.authorName}
+                        </span>
+                        <span className="text-gray-500 text-sm ml-3">
+                          {formatDate(comment.createdAt)}
+                        </span>
+                      </div>
                     </div>
                     {isLoggedIn &&
                       (user?.id === comment.authorId || user?.isAdmin) && (
@@ -529,7 +723,7 @@ export default function BlogPostPage() {
                         </button>
                       )}
                   </div>
-                  <p className="text-gray-700 text-lg">{comment.text}</p>
+                  <p className="text-gray-700 text-lg ml-11">{comment.text}</p>
                 </div>
               ))
             )}

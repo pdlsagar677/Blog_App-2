@@ -1,11 +1,11 @@
-// app/api/profile/route.ts
+// app/api/profile/route.ts - FIXED
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from 'next/headers';
 import { userService, sessionService } from "@/lib/mongodb/dbService";
 
 export async function PUT(request: NextRequest) {
   try {
-    // FIX: Use 'auth-token' consistently
+    // FIXED: Use 'auth-token' consistently
     const cookieStore = await cookies();
     const authToken = cookieStore.get('auth-token')?.value;
 
@@ -24,11 +24,18 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // ... rest of your profile update logic
+    // Get user data from request
     const userData = await request.json();
     
+    // FIXED: Handle profile picture removal (empty string)
+    const updateData = {
+      ...userData,
+      // If profilePicture is explicitly set to empty string, it means remove the picture
+      profilePicture: userData.profilePicture || null // Set to null in database to remove
+    };
+    
     // Update user profile
-    const updated = await userService.updateUser(session.userId, userData);
+    const updated = await userService.updateUser(session.userId, updateData);
     
     if (!updated) {
       return NextResponse.json(
