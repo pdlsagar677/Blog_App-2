@@ -218,7 +218,7 @@ const Profile: React.FC = () => {
       if (profileImageFile) {
         setIsUploadingImage(true);
         const fileSizeMB = (profileImageFile.size / (1024 * 1024)).toFixed(2);
-        setMessage({ type: 'success', text: `📤 Uploading ${fileSizeMB} MB profile picture...` });
+        setMessage({ type: 'success', text: `📤 Uploading  profile picture...` });
         
         finalProfilePicture = await uploadToCloudinary(profileImageFile);
         
