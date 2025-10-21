@@ -26,7 +26,9 @@ export async function POST(req: Request) {
         messages: [
           {
             role: "user",
-            content: `Write a 500-word, SEO-friendly blog post about "${title}" in markdown format. Include intro, key points, and conclusion.`,
+            content: `Write a 500-word blog post about "${title}". 
+                      Use natural human-like paragraphs — not markdown headings, 
+                      no outlines — just flowing descriptive content.`,
           },
         ],
         max_tokens: 1000,
@@ -44,39 +46,28 @@ export async function POST(req: Request) {
         source: "openai",
       });
     } catch (error: any) {
-      // Check for OpenAI quota or rate-limit errors
+      // Handle OpenAI quota or rate-limit errors gracefully
       if (
         error.code === "insufficient_quota" ||
         (error.status && error.status === 429)
       ) {
-        console.warn("⚠️ OpenAI quota exceeded. Using fallback content.");
-        // Return fallback content
+        console.warn("⚠️ OpenAI quota exceeded. Using fallback text.");
+
+        // ✅ Fallback — simple paragraph format
         return NextResponse.json({
           content: `
-## ${title}
-
-It seems our AI content generator has reached its quota.  
-But here’s a helpful outline to get you started manually:
-
-### Introduction
-Describe the importance and charm of ${title}. 
-
-### Main Section
-- Key features or attractions related to ${title}.
-- Historical or cultural background.
-- Tips for readers or travelers.
-
-### Conclusion
-Summarize why ${title} is worth exploring or learning about.
-
-_(Generated using fallback template due to API quota limits.)_
-          `,
-          description: `An article outline about ${title}`,
+${title} is a fascinating topic that captures the imagination of many people. 
+Although our AI writing service is temporarily unavailable, here’s a short paragraph 
+to get you started. ${title} represents beauty, culture, and depth — offering a mix 
+of experiences that intrigue travelers and locals alike. From its historical background 
+to its modern relevance, there’s always something inspiring about this subject. 
+You can expand this introduction with your own details, adding personal insights 
+and observations to make it truly yours.`,
+          description: `An article about ${title}`,
           source: "fallback",
         });
       }
 
-      // Other unknown errors
       console.error("❌ OpenAI API Error:", error);
       throw error;
     }
