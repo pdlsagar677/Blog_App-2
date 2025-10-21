@@ -1,10 +1,10 @@
-// components/blog/CreatePostForm.tsx
+// components/blog/CreatePostForm.tsx - FIXED AUTH REFRESH ISSUE
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useBlogStore } from "@/store/useBlogStore";
-import { ArrowLeft, Image, FileText, Send, Upload, X } from "lucide-react";
+import { ArrowLeft, Image, FileText, Send, Upload, X, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 
@@ -18,25 +18,32 @@ export default function CreatePostForm() {
   const [imagePreview, setImagePreview] = useState<string>("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
+  const [isAIGenerating, setIsAIGenerating] = useState(false);
   const [message, setMessage] = useState("");
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   
   const router = useRouter();
-  const { user, isLoggedIn } = useAuthStore();
+  const { user, isLoggedIn, isLoading: authLoading } = useAuthStore();
   const { addPost } = useBlogStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Check authentication and redirect if not logged in
+  // FIXED: Proper auth check that doesn't redirect on every refresh
   useEffect(() => {
-    if (!isLoggedIn) {
-      setMessage("🔒 Please log in to create a blog post. Redirecting...");
-      setTimeout(() => {
-        router.push("/login");
-      }, 2000);
-    } else {
-      setIsCheckingAuth(false);
+    // Only check auth once when component mounts
+    if (isCheckingAuth) {
+      if (!authLoading) {
+        if (!isLoggedIn) {
+          setMessage("🔒 Please log in to create a blog post. Redirecting...");
+          const timer = setTimeout(() => {
+            router.push("/login");
+          }, 2000);
+          return () => clearTimeout(timer);
+        } else {
+          setIsCheckingAuth(false);
+        }
+      }
     }
-  }, [isLoggedIn, router]);
+  }, [isLoggedIn, authLoading, router, isCheckingAuth]);
 
   // Clean up image preview URL when component unmounts
   useEffect(() => {
@@ -48,15 +55,13 @@ export default function CreatePostForm() {
   }, [imagePreview]);
 
   const handleImageUpload = (file: File) => {
-    // Validate file type
     const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
     if (!validTypes.includes(file.type)) {
       setErrors(prev => ({ ...prev, image: 'Please select a valid image file (JPEG, PNG, GIF, WebP)' }));
       return;
     }
 
-    // UPDATED: Validate file size (max 10MB)
-    const maxSize = 10 * 1024 * 1024; // 10MB in bytes
+    const maxSize = 10 * 1024 * 1024;
     if (file.size > maxSize) {
       setErrors(prev => ({ 
         ...prev, 
@@ -66,12 +71,9 @@ export default function CreatePostForm() {
     }
 
     setImageFile(file);
-    
-    // Create preview URL
     const previewUrl = URL.createObjectURL(file);
     setImagePreview(previewUrl);
     
-    // Clear any previous image errors
     if (errors.image) {
       setErrors(prev => ({ ...prev, image: '' }));
     }
@@ -101,7 +103,7 @@ export default function CreatePostForm() {
   };
 
   // Show loading while checking authentication
-  if (isCheckingAuth || !isLoggedIn || !user) {
+  if (isCheckingAuth || authLoading || !isLoggedIn || !user) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-6">
         <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md text-center">
@@ -150,6 +152,44 @@ export default function CreatePostForm() {
     }
   };
 
+  const generateWithAI = async () => {
+    if (!form.title.trim()) {
+      setMessage("⚠️ Please enter a title before using AI.");
+      return;
+    }
+    
+    setIsAIGenerating(true);
+    setMessage("🤖 Generating blog content...");
+
+    try {
+      const response = await fetch("/api/generate-blog", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: form.title }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to generate blog content");
+      }
+
+      setForm(prev => ({ 
+        ...prev, 
+        content: data.content,
+        description: data.description || `An article about ${form.title}`
+      }));
+
+      setMessage("✅ Content generated successfully!");
+
+    } catch (error) {
+      console.error("AI Generation Error:", error);
+      setMessage("❌ Service unavailable. Please write your content manually.");
+    } finally {
+      setIsAIGenerating(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -164,15 +204,12 @@ export default function CreatePostForm() {
     try {
       let finalImageUrl = "";
 
-      // If image file is selected, upload it to Cloudinary
       if (imageFile) {
-        const fileSizeMB = (imageFile.size / (1024 * 1024)).toFixed(2);
-        setMessage(`📤 Uploading  image for post...`);
+        setMessage(`📤 Uploading image for post...`);
         finalImageUrl = await uploadToCloudinary(imageFile);
         setMessage("✅ Image uploaded! Creating post...");
       }
 
-      // FIXED: Add authorAvatar from user object
       await addPost({
         title: form.title,
         imageUrl: finalImageUrl,
@@ -180,12 +217,11 @@ export default function CreatePostForm() {
         content: form.content,
         authorId: user.id,
         authorName: user.username,
-        authorAvatar: user.avatar || "", // ADD THIS LINE
+        authorAvatar: user.avatar || "",
       });
 
       setMessage("🎉 Blog post created successfully! Redirecting...");
       
-      // Reset form
       setForm({
         title: "",
         description: "",
@@ -193,7 +229,6 @@ export default function CreatePostForm() {
       });
       removeImage();
 
-      // Redirect to blog page after 2 seconds
       setTimeout(() => {
         router.push("/blog");
       }, 2000);
@@ -213,14 +248,14 @@ export default function CreatePostForm() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12">
       <div className="container mx-auto px-6 max-w-4xl">
-        {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <Link
             href="/blog"
             className="flex items-center text-gray-600 hover:text-blue-600 transition-colors"
           >
             <ArrowLeft className="w-5 h-5 mr-2" />
-            Back to Blogs
+            <span className="hidden sm:inline">Back to Blogs</span>
+            <span className="sm:hidden">Back</span>
           </Link>
           <div className="text-right">
             <p className="text-sm text-gray-600">Writing as</p>
@@ -228,7 +263,6 @@ export default function CreatePostForm() {
           </div>
         </div>
 
-        {/* Form Card */}
         <div className="bg-white rounded-2xl shadow-xl p-8">
           <div className="text-center mb-8">
             <div className="bg-blue-500 p-3 rounded-2xl inline-flex mb-4">
@@ -239,43 +273,66 @@ export default function CreatePostForm() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Title Field */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Blog Title *
               </label>
-              <input
-                type="text"
-                placeholder="Enter a compelling title for your blog post"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors text-gray-900 placeholder-gray-500"
-                value={form.title}
-                onChange={(e) => handleChange("title", e.target.value)}
-              />
+              <div className="flex gap-3">
+                <input
+                  type="text"
+                  placeholder="Enter a compelling title for your blog post"
+                  className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors text-gray-900 placeholder-gray-500"
+                  value={form.title}
+                  onChange={(e) => handleChange("title", e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={generateWithAI}
+                  disabled={!form.title.trim() || isAIGenerating}
+                  className={`flex items-center px-4 sm:px-6 py-3 rounded-lg font-medium transition-all duration-200 ${
+                    !form.title.trim() || isAIGenerating
+                      ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                      : "bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                  }`}
+                  title="Generate content with AI"
+                >
+                  {isAIGenerating ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                      <span className="hidden sm:inline">AI...</span>
+                      <span className="sm:hidden">...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 sm:mr-2" />
+                      <span className="hidden sm:inline">AI Generate</span>
+                    </>
+                  )}
+                </button>
+              </div>
               {errors.title && (
                 <p className="mt-2 text-sm text-red-600">{errors.title}</p>
               )}
             </div>
 
-            {/* Image Upload Field */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 <Image className="w-4 h-4 inline mr-2" />
                 Featured Image (Optional)
               </label>
               
-              {/* File Upload Area */}
               {!imagePreview && (
                 <div
-                  className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors group"
+                  className="border-2 border-dashed border-gray-300 rounded-lg p-6 sm:p-8 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors group"
                   onDrop={handleFileDrop}
                   onDragOver={(e) => e.preventDefault()}
                   onClick={() => fileInputRef.current?.click()}
                 >
-                  <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4 group-hover:text-blue-500 transition-colors" />
-                  <p className="text-gray-600 mb-2 text-lg font-medium">Drag & drop an image here</p>
-                  <p className="text-gray-500 mb-3">or click to browse files</p>
+                  <Upload className="w-10 h-10 sm:w-12 sm:h-12 text-gray-400 mx-auto mb-3 sm:mb-4 group-hover:text-blue-500 transition-colors" />
+                  <p className="text-gray-600 mb-2 text-base sm:text-lg font-medium">Drag & drop an image here</p>
+                  <p className="text-gray-500 mb-2 sm:mb-3 text-sm sm:text-base">or click to browse files</p>
                   <p className="text-xs text-gray-500">Supports: JPEG, PNG, GIF, WebP (Max 10MB)</p>
-                  <p className="text-xs text-blue-500 mt-2">Images are securely uploaded to Cloudinary CDN</p>
+                  <p className="text-xs text-blue-500 mt-1 sm:mt-2">Images are securely uploaded to Cloudinary CDN</p>
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -286,34 +343,33 @@ export default function CreatePostForm() {
                 </div>
               )}
 
-              {/* Image Preview */}
               {imagePreview && (
-                <div className="border-2 border-dashed border-green-300 rounded-lg p-6 bg-green-50">
-                  <div className="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-6">
+                <div className="border-2 border-dashed border-green-300 rounded-lg p-4 sm:p-6 bg-green-50">
+                  <div className="flex flex-col sm:flex-row items-center space-y-3 sm:space-y-0 sm:space-x-4 sm:space-x-6">
                     <div className="relative">
                       <img
                         src={imagePreview}
                         alt="Preview"
-                        className="w-32 h-32 object-cover rounded-lg border-2 border-green-200 shadow-sm"
+                        className="w-24 h-24 sm:w-32 sm:h-32 object-cover rounded-lg border-2 border-green-200 shadow-sm"
                       />
-                      <div className="absolute -top-2 -right-2 bg-green-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">
+                      <div className="absolute -top-2 -right-2 bg-green-500 text-white rounded-full w-5 h-5 sm:w-6 sm:h-6 flex items-center justify-center text-xs">
                         ✓
                       </div>
                     </div>
                     <div className="flex-1 text-center sm:text-left">
-                      <p className="text-green-800 font-medium mb-2">
+                      <p className="text-green-800 font-medium mb-1 sm:mb-2 text-sm sm:text-base">
                         Image Ready for Upload
                       </p>
-                      <p className="text-sm text-gray-600 mb-2">
+                      <p className="text-xs sm:text-sm text-gray-600 mb-1 sm:mb-2 truncate">
                         {imageFile?.name}
                       </p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-gray-500 mb-2 sm:mb-0">
                         Size: {imageFile ? `${(imageFile.size / (1024 * 1024)).toFixed(2)} MB` : 'Unknown'}
                       </p>
                       <button
                         type="button"
                         onClick={removeImage}
-                        className="mt-3 flex items-center text-red-600 hover:text-red-800 text-sm font-medium"
+                        className="mt-2 sm:mt-3 flex items-center text-red-600 hover:text-red-800 text-sm font-medium justify-center sm:justify-start"
                       >
                         <X className="w-4 h-4 mr-1" />
                         Remove Image
@@ -330,7 +386,6 @@ export default function CreatePostForm() {
                 </p>
               )}
 
-              {/* Help Text */}
               {!imagePreview && (
                 <p className="text-xs text-gray-500 mt-2">
                   ✨ Tip: A compelling featured image can increase engagement with your post
@@ -338,13 +393,12 @@ export default function CreatePostForm() {
               )}
             </div>
 
-            {/* Description Field */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Short Description *
               </label>
               <textarea
-                placeholder="Write a brief description that will appear in blog listings (minimum 20 characters)"
+                placeholder="Write a brief description that will appear in blog listings (minimum 10 characters)"
                 rows={3}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors text-gray-900 placeholder-gray-500 resize-vertical"
                 value={form.description}
@@ -352,9 +406,9 @@ export default function CreatePostForm() {
               />
               <div className="flex justify-between items-center mt-1">
                 <p className="text-xs text-gray-500">
-                  {form.description.length}/20 characters (minimum)
+                  {form.description.length}/10 characters (minimum)
                 </p>
-                {form.description.length >= 20 && (
+                {form.description.length >= 10 && (
                   <span className="text-xs text-green-600 font-medium">✓ Good length</span>
                 )}
               </div>
@@ -363,13 +417,12 @@ export default function CreatePostForm() {
               )}
             </div>
 
-            {/* Content Field */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Blog Content *
               </label>
               <textarea
-                placeholder="Write your blog post content here... (minimum 50 characters)"
+                placeholder="Write your blog post content here... (minimum 20 characters) or use AI to generate content"
                 rows={12}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors text-gray-900 placeholder-gray-500 resize-vertical"
                 value={form.content}
@@ -377,9 +430,9 @@ export default function CreatePostForm() {
               />
               <div className="flex justify-between items-center mt-1">
                 <p className="text-xs text-gray-500">
-                  {form.content.length}/50 characters (minimum)
+                  {form.content.length}/20 characters (minimum)
                 </p>
-                {form.content.length >= 50 && (
+                {form.content.length >= 20 && (
                   <span className="text-xs text-green-600 font-medium">✓ Good length</span>
                 )}
               </div>
@@ -388,7 +441,6 @@ export default function CreatePostForm() {
               )}
             </div>
 
-            {/* Submit Button */}
             <button
               type="submit"
               disabled={!isFormValid() || isLoading}
@@ -401,21 +453,24 @@ export default function CreatePostForm() {
               {isLoading ? (
                 <>
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                  Publishing...
+                  <span className="hidden sm:inline">Publishing...</span>
+                  <span className="sm:hidden">Publishing</span>
                 </>
               ) : (
                 <>
                   <Send className="w-5 h-5 mr-2" />
-                  Publish Blog Post
+                  <span className="hidden sm:inline">Publish Blog Post</span>
+                  <span className="sm:hidden">Publish</span>
                 </>
               )}
             </button>
 
-            {/* Message */}
             {message && (
               <div className={`p-4 rounded-lg text-center ${
-                message.includes("❌") || message.includes("Failed")
+                message.includes("❌") || message.includes("Failed") || message.includes("⚠️")
                   ? "bg-red-50 text-red-700 border border-red-200"
+                  : message.includes("🤖") 
+                  ? "bg-blue-50 text-blue-700 border border-blue-200"
                   : "bg-green-50 text-green-700 border border-green-200"
               }`}>
                 {message}
