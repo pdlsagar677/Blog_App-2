@@ -40,3 +40,63 @@ export interface BlogPost {
   likes: string[];
   comments: Comment[];
 }
+// Add these interfaces to your models.ts or dbService.ts
+export interface TeamMember {
+  id: string;
+  name: string;
+  position: string;
+  bio: string;
+  imageUrl: string;
+  email?: string;
+  socialLinks?: {
+    twitter?: string;
+    linkedin?: string;
+    github?: string;
+  };
+  order: number;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface AboutPageData {
+  hero: {
+    title: string;
+    subtitle: string;
+    description: string;
+    ctaPrimary: string;
+    ctaSecondary: string;
+  };
+  stats: Array<{
+    number: string;
+    label: string;
+  }>;
+  mission: {
+    title: string;
+    description: string;
+    forWriters: {
+      title: string;
+      description: string;
+      features: string[];
+    };
+    forReaders: {
+      title: string;
+      description: string;
+      features: string[];
+    };
+  };
+  features: Array<{
+    icon: string;
+    title: string;
+    description: string;
+  }>;
+  milestones: Array<{
+    year: string;
+    title: string;
+    description: string;
+  }>;
+  team: {
+    title: string;
+    description: string;
+  };
+}

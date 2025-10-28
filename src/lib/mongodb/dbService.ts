@@ -1,4 +1,3 @@
-// lib/mongodb/dbService.ts
 import { connectToDatabase } from './connection';
 import { User, Session, BlogPost, Comment } from './models';
 import bcryptjs from 'bcryptjs';
@@ -7,14 +6,75 @@ import bcryptjs from 'bcryptjs';
 const USERS_COLLECTION = 'users';
 const SESSIONS_COLLECTION = 'sessions';
 const POSTS_COLLECTION = 'posts';
-
-
+const ABOUT_CONTENT_COLLECTION = 'about_content';
+const TEAM_MEMBERS_COLLECTION = 'team_members';
 
 // Helper functions
 export const generateId = (): string => Math.random().toString(36).slice(2) + Date.now().toString(36);
 export const validateEmail = (email: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 export const validatePhoneNumber = (phone: string): boolean => /^\d{10}$/.test(phone);
 export const verifyPassword = (password: string, hashedPassword: string): boolean => bcryptjs.compareSync(password, hashedPassword);
+
+// About Page Interfaces
+export interface TeamMember {
+  id: string;
+  name: string;
+  position: string;
+  bio: string;
+  imageUrl: string;
+  email?: string;
+  socialLinks?: {
+    twitter?: string;
+    linkedin?: string;
+    github?: string;
+  };
+  order: number;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface AboutPageData {
+  hero: {
+    title: string;
+    subtitle: string;
+    description: string;
+    ctaPrimary: string;
+    ctaSecondary: string;
+  };
+  stats: Array<{
+    number: string;
+    label: string;
+  }>;
+  mission: {
+    title: string;
+    description: string;
+    forWriters: {
+      title: string;
+      description: string;
+      features: string[];
+    };
+    forReaders: {
+      title: string;
+      description: string;
+      features: string[];
+    };
+  };
+  features: Array<{
+    icon: string;
+    title: string;
+    description: string;
+  }>;
+  milestones: Array<{
+    year: string;
+    title: string;
+    description: string;
+  }>;
+  team: {
+    title: string;
+    description: string;
+  };
+}
 
 // --------------------- User Service ---------------------
 export const userService = {
@@ -197,11 +257,7 @@ export const blogService = {
   },
 };
 
-
-
-// Add this to your lib/mongodb/dbService.ts file
-
-// Admin user operations
+// --------------------- Admin Service ---------------------
 export const adminService = {
   // Get all users with pagination and search
   async getAllUsers(page: number = 1, limit: number = 10, search: string = ''): Promise<{ users: User[], total: number }> {
@@ -413,5 +469,246 @@ export const adminService = {
       console.error('Error toggling admin status:', error);
       return { success: false, error: 'Database error' };
     }
+  }
+};
+
+// --------------------- About Page Service ---------------------
+export const aboutService = {
+  // Get all about page content
+  async getAboutContent(): Promise<AboutPageData> {
+    const { db } = await connectToDatabase();
+    
+    // Default content structure
+    const defaultContent: AboutPageData = {
+      hero: {
+        title: "About BlogHub",
+        subtitle: "BlogHub",
+        description: "BlogHub is more than just a blogging platform—it's a vibrant community where writers and readers come together to share stories, ideas, and inspiration. We're building the future of digital storytelling, one post at a time.",
+        ctaPrimary: "Start Writing Today",
+        ctaSecondary: "Explore Blogs"
+      },
+      stats: [
+        { number: "50K+", label: "Active Writers" },
+        { number: "500K+", label: "Blog Posts" },
+        { number: "10M+", label: "Monthly Readers" },
+        { number: "120+", label: "Countries" }
+      ],
+      mission: {
+        title: "Our Mission",
+        description: "To empower every voice by providing a platform where stories can be shared, discovered, and celebrated. We believe that everyone has a story worth telling.",
+        forWriters: {
+          title: "For Writers",
+          description: "Whether you're a seasoned author or just starting your writing journey, BlogHub provides the tools and audience you need to succeed.",
+          features: [
+            "Easy-to-use writing tools",
+            "Built-in audience growth",
+            "Real-time analytics"
+          ]
+        },
+        forReaders: {
+          title: "For Readers",
+          description: "Discover incredible content from writers around the world. Follow your favorite authors and explore new topics.",
+          features: [
+            "Personalized recommendations",
+            "Save your favorite articles",
+            "Engage with writers directly"
+          ]
+        }
+      },
+      features: [
+        {
+          icon: "PenTool",
+          title: "Easy Writing Experience",
+          description: "Our intuitive editor makes writing and formatting your stories effortless."
+        },
+        {
+          icon: "Globe",
+          title: "Global Reach",
+          description: "Share your stories with readers from around the world."
+        },
+        {
+          icon: "Users",
+          title: "Vibrant Community",
+          description: "Join thousands of writers who share, support, and inspire each other."
+        },
+        {
+          icon: "Shield",
+          title: "Safe Space",
+          description: "We prioritize creating a respectful and inclusive environment."
+        }
+      ],
+      milestones: [
+        {
+          year: "2020",
+          title: "BlogHub Founded",
+          description: "Started with a simple mission: to create the best platform for writers and readers."
+        },
+        {
+          year: "2021",
+          title: "First 10K Users",
+          description: "Reached our first major milestone with 10,000 passionate writers."
+        },
+        {
+          year: "2022",
+          title: "Mobile App Launch",
+          description: "Expanded our reach with dedicated mobile apps for iOS and Android."
+        },
+        {
+          year: "2023",
+          title: "Global Recognition",
+          description: "Featured as one of the top emerging platforms for digital content creators."
+        }
+      ],
+      team: {
+        title: "Meet Our Team",
+        description: "The passionate people behind BlogHub"
+      }
+    };
+
+    try {
+      const savedContent = await db.collection(ABOUT_CONTENT_COLLECTION).findOne({});
+      if (savedContent) {
+        return { ...defaultContent, ...savedContent.content };
+      }
+      
+      // Initialize with default content
+      await db.collection(ABOUT_CONTENT_COLLECTION).insertOne({
+        id: 'about_page',
+        content: defaultContent,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+      
+      return defaultContent;
+    } catch (error) {
+      console.error('Error getting about content:', error);
+      return defaultContent;
+    }
+  },
+
+  // Update about page content
+  async updateAboutContent(content: Partial<AboutPageData>): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { db } = await connectToDatabase();
+      
+      const existing = await db.collection(ABOUT_CONTENT_COLLECTION).findOne({});
+      const currentContent = existing?.content || {};
+      
+      const updatedContent = {
+        ...currentContent,
+        ...content
+      };
+      
+      const result = await db.collection(ABOUT_CONTENT_COLLECTION).updateOne(
+        {},
+        { 
+          $set: { 
+            content: updatedContent,
+            updatedAt: new Date()
+          } 
+        },
+        { upsert: true }
+      );
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Error updating about content:', error);
+      return { success: false, error: 'Database error' };
+    }
+  },
+
+  // Team member operations
+  async createTeamMember(memberData: Omit<TeamMember, 'id' | 'createdAt' | 'updatedAt'>): Promise<{ success: boolean; member?: TeamMember; error?: string }> {
+    try {
+      const { db } = await connectToDatabase();
+      const newMember: TeamMember = {
+        ...memberData,
+        id: generateId(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      
+      const result = await db.collection<TeamMember>(TEAM_MEMBERS_COLLECTION).insertOne(newMember);
+      newMember._id = result.insertedId;
+      
+      return { success: true, member: newMember };
+    } catch (error) {
+      console.error('Error creating team member:', error);
+      return { success: false, error: 'Database error' };
+    }
+  },
+
+  async getAllTeamMembers(): Promise<TeamMember[]> {
+    const { db } = await connectToDatabase();
+    return db.collection<TeamMember>(TEAM_MEMBERS_COLLECTION)
+      .find({ isActive: true })
+      .sort({ order: 1, createdAt: 1 })
+      .toArray();
+  },
+
+  async updateTeamMember(id: string, updates: Partial<TeamMember>): Promise<{ success: boolean; member?: TeamMember; error?: string }> {
+    try {
+      const { db } = await connectToDatabase();
+      const updateData = {
+        ...updates,
+        updatedAt: new Date(),
+      };
+      
+      const result = await db.collection<TeamMember>(TEAM_MEMBERS_COLLECTION).updateOne(
+        { id },
+        { $set: updateData }
+      );
+      
+      if (result.modifiedCount === 0) {
+        return { success: false, error: 'Member not found or no changes made' };
+      }
+      
+      const updatedMember = await db.collection<TeamMember>(TEAM_MEMBERS_COLLECTION).findOne({ id });
+      return { success: true, member: updatedMember };
+    } catch (error) {
+      console.error('Error updating team member:', error);
+      return { success: false, error: 'Database error' };
+    }
+  },
+
+  async deleteTeamMember(id: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { db } = await connectToDatabase();
+      const result = await db.collection<TeamMember>(TEAM_MEMBERS_COLLECTION).deleteOne({ id });
+      
+      if (result.deletedCount === 0) {
+        return { success: false, error: 'Member not found' };
+      }
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Error deleting team member:', error);
+      return { success: false, error: 'Database error' };
+    }
+  },
+
+  async reorderTeamMembers(orderedIds: string[]): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { db } = await connectToDatabase();
+      
+      const bulkOps = orderedIds.map((id, index) => ({
+        updateOne: {
+          filter: { id },
+          update: { $set: { order: index, updatedAt: new Date() } }
+        }
+      }));
+      
+      await db.collection<TeamMember>(TEAM_MEMBERS_COLLECTION).bulkWrite(bulkOps);
+      return { success: true };
+    } catch (error) {
+      console.error('Error reordering members:', error);
+      return { success: false, error: 'Database error' };
+    }
+  },
+
+  // Add this method to find user by ID for authentication
+  async findUserById(id: string): Promise<User | null> {
+    const { db } = await connectToDatabase();
+    return db.collection<User>(USERS_COLLECTION).findOne({ id });
   }
 };

@@ -9,7 +9,8 @@ import {
   BarChart3, 
   Settings, 
   Shield,
-  LogOut
+  LogOut,
+  Info
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -41,6 +42,7 @@ export default function AdminLayout({
     { name: "Dashboard", href: "/admin", icon: BarChart3 },
     { name: "Blog Posts", href: "/admin/posts", icon: FileText },
     { name: "Users", href: "/admin/users", icon: Users },
+    { name: "About Page", href: "/admin/about", icon: Info },
     { name: "Settings", href: "/admin/settings", icon: Settings },
   ];
 
